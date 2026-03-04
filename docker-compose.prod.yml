@@ -1,0 +1,65 @@
+version: '3.9'
+
+# Переопределяем dev конфиг для продакшена
+# Запуск: docker-compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+
+volumes:
+  postgres_data:
+  postgres_backup:
+
+networks:
+  plant-network:
+    driver: bridge
+
+services:
+
+  postgres:
+    # В продакшене НЕ пробрасываем порт наружу!
+    # БД доступна только внутри Docker сети
+    ports: []
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - postgres_backup:/backups
+      - ./docker/postgres/init-schemas.sql:/docker-entrypoint-initdb.d/init.sql
+    # Продакшен настройки PostgreSQL
+    command: >
+      postgres
+      -c max_connections=200
+      -c shared_buffers=256MB
+      -c effective_cache_size=1GB
+      -c log_min_duration_statement=1000
+
+  backend:
+    # В продакшене используем готовый образ из registry
+    # image: ghcr.io/ivan4udak/plant-backend:latest
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      # JVM настройки для контейнера
+      JAVA_OPTS: >
+        -Xms256m
+        -Xmx512m
+        -XX:+UseContainerSupport
+    # В продакшене НЕ пробрасываем порт напрямую
+    # Трафик идёт через nginx reverse proxy
+    ports: []
+
+  # pgAdmin убираем в продакшене (не нужен)
+  pgadmin:
+    profiles:
+      - debug  # запускается только с: docker-compose --profile debug up
+
+  # Nginx — reverse proxy для продакшена
+  nginx:
+    image: nginx:alpine
+    container_name: plant-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./docker/nginx/ssl:/etc/nginx/ssl:ro
+    networks:
+      - plant-network
+    depends_on:
+      - backend

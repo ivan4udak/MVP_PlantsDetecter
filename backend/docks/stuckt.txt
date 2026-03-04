@@ -1,0 +1,93 @@
+├── pom.xml
+├── src/main/java/com/plantidentifier/
+│   │
+│   ├── PlantIdentifierApplication.java
+│   │
+│   ├── config/
+│   │   ├── SecurityConfig.java          ← JWT фильтры, роли, CORS
+│   │   ├── JwtConfig.java               ← настройки токенов
+│   │   └── AuditConfig.java             ← кто делает изменения
+│   │
+│   ├── controller/v1/
+│   │   ├── SessionController.java       ← POST /session/guest
+│   │   ├── AuthController.java          ← register, login, refresh, upgrade
+│   │   ├── PlantController.java         ← analyze, history, getById, delete
+│   │   ├── UserController.java          ← PATCH /users/language
+│   │   ├── SystemController.java        ← health, health/deep
+│   │   └── AdminController.java         ← admin endpoints (ROLE_ADMIN)
+│   │
+│   ├── service/
+│   │   ├── SessionService.java          ← создание guest
+│   │   ├── AuthService.java             ← регистрация, логин, upgrade
+│   │   ├── PlantService.java            ← анализ, история
+│   │   ├── UserService.java             ← язык, профиль
+│   │   ├── RateLimitService.java        ← проверка лимитов
+│   │   └── AuditService.java            ← логи аудита
+│   │
+│   ├── repository/
+│   │   ├── UserRepository.java
+│   │   ├── PlantRequestRepository.java
+│   │   ├── PlantRawResponseRepository.java
+│   │   ├── AiUsageStatsRepository.java
+│   │   ├── RateLimitLogRepository.java
+│   │   └── ErrorLogRepository.java
+│   │
+│   ├── entity/
+│   │   ├── User.java                    ← таблица users
+│   │   ├── PlantRequest.java            ← таблица plant_requests
+│   │   ├── PlantRawResponse.java        ← таблица plant_raw_responses
+│   │   ├── AiUsageStat.java             ← таблица ai_usage_stats
+│   │   ├── RateLimitLog.java            ← таблица rate_limit_log
+│   │   └── ErrorLog.java               ← таблица error_logs
+│   │
+│   ├── dto/
+│   │   ├── request/
+│   │   │   ├── GuestSessionRequest.java
+│   │   │   ├── RegisterRequest.java
+│   │   │   ├── LoginRequest.java
+│   │   │   ├── RefreshTokenRequest.java
+│   │   │   ├── UpgradeRequest.java
+│   │   │   ├── LanguageUpdateRequest.java
+│   │   │   └── PlantAnalyzeRequest.java
+│   │   └── response/
+│   │       ├── GuestSessionResponse.java
+│   │       ├── AuthResponse.java
+│   │       ├── PlantAnalysisResponse.java
+│   │       ├── PlantHistoryResponse.java
+│   │       └── ErrorResponse.java       ← единая модель ошибок
+│   │
+│   ├── security/
+│   │   ├── JwtService.java              ← создание/проверка JWT
+│   │   ├── JwtAuthFilter.java           ← фильтр каждого запроса
+│   │   ├── CustomUserDetails.java       ← обёртка User для Spring Security
+│   │   └── CustomUserDetailsService.java
+│   │
+│   ├── ai/
+│   │   ├── AIAdapter.java               ← интерфейс
+│   │   ├── OpenAIAdapter.java           ← реализация OpenAI
+│   │   ├── YandexAdapter.java           ← реализация Yandex
+│   │   └── GigaChatAdapter.java         ← реализация GigaChat
+│   │
+│   ├── exception/
+│   │   ├── GlobalExceptionHandler.java  ← @ControllerAdvice
+│   │   ├── PlantNotFoundException.java
+│   │   ├── RateLimitExceededException.java
+│   │   ├── UserAlreadyExistsException.java
+│   │   └── InvalidTokenException.java
+│   │
+│   ├── filter/
+│   │   └── RequestIdFilter.java         ← X-Request-ID корреляция
+│   │
+│   └── util/
+│       ├── SecurityUtils.java           ← получить текущего юзера
+│       └── DateUtils.java
+│
+└── src/main/resources/
+    ├── application.properties
+    ├── application-dev.properties
+    └── db/migration/
+        ├── V1__create_users_table.sql
+        ├── V2__create_plant_tables.sql
+        ├── V3__create_audit_tables.sql
+        ├── V4__create_triggers.sql
+        └── V5__create_indexes.sql

@@ -1,0 +1,111 @@
+version: '3.9'
+
+# Именованные volume — данные сохраняются между перезапусками контейнеров
+volumes:
+  postgres_data:
+  pgadmin_data:
+
+# Сеть — контейнеры общаются по именам сервисов
+# backend обращается к postgres просто как "postgres:5432"
+networks:
+  plant-network:
+    driver: bridge
+
+services:
+
+  # =====================
+  # PostgreSQL База данных
+  # =====================
+  postgres:
+    image: postgres:16-alpine
+    container_name: plant-postgres
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      # Создаём три схемы при старте
+      POSTGRES_INITDB_ARGS: "--encoding=UTF-8"
+
+    ports:
+      - "5432:5432"    # хост:контейнер
+
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # SQL скрипт для создания схем при первом старте
+      - ./docker/postgres/init-schemas.sql:/docker-entrypoint-initdb.d/init.sql
+
+    networks:
+      - plant-network
+
+    # Проверка что PostgreSQL готов принимать соединения
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # =====================
+  # Наш Spring Boot Backend
+  # =====================
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: plant-backend
+    restart: unless-stopped
+
+    # Запускаем только после того как postgres здоров
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+    environment:
+      # Передаём переменные из .env файла
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${DB_NAME}
+      SPRING_DATASOURCE_USERNAME: ${DB_USER}
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRATION: ${JWT_EXPIRATION}
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILE:-dev}
+
+    ports:
+      - "8080:8080"
+
+    networks:
+      - plant-network
+
+    # Healthcheck через наш /system/health endpoint
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider",
+             "http://localhost:8080/api/v1/system/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s   # даём время Spring Boot запуститься
+
+  # =====================
+  # pgAdmin — UI для PostgreSQL
+  # (только для разработки)
+  # =====================
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: plant-pgadmin
+    restart: unless-stopped
+
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@plant.dev}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
+
+    ports:
+      - "5050:80"    # открываем pgAdmin на localhost:5050
+
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+
+    networks:
+      - plant-network
+
+    depends_on:
+      - postgres

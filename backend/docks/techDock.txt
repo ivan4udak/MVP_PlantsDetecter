@@ -1,0 +1,309 @@
+Plant Identifier — Architecture Blueprint v1.0
+1. Vision
+
+Мобильное iOS-приложение для определения растений по фото. Позволяет:
+
+Получать структурированный ответ
+
+Работать без регистрации (Guest)
+
+Масштабироваться в enterprise-среде
+
+Поддерживать историю и аудит действий
+
+2. High-Level Architecture
+
+Backend:
+
+Java + Spring Boot
+
+Spring Security
+
+PostgreSQL
+
+Object Storage (S3-compatible)
+
+AI Provider abstraction layer
+
+REST API (gRPC опционально между внутренними сервисами в будущем)
+
+3. User Model
+
+Роли:
+
+ROLE_GUEST: 3 запроса/день
+
+ROLE_USER
+
+ROLE_ADMIN
+
+ROLE_SYSTEM
+
+Guest создаётся автоматически и хранится в users. Лимитируется.
+
+4. Language Strategy
+
+preferred_language хранится в users
+
+передаётся при создании guest
+
+меняется через PATCH /api/v1/users/language
+
+JWT содержит lang как кэш
+
+БД — источник истины
+
+Accept-Language header используется как fallback
+
+5. Security Model
+
+JWT Access (15 мин), Refresh token (7–30 дней)
+
+Role-based access
+
+Soft delete
+
+Rate limiting
+
+Audit через DB triggers
+
+X-Request-ID обязателен в каждом запросе
+
+6. Database Schema
+users
+
+id UUID PK
+email VARCHAR(255)
+password_hash VARCHAR(255)
+user_type VARCHAR(20) — GUEST / REGISTERED
+status VARCHAR(50)
+device_id VARCHAR(255)
+preferred_language VARCHAR(10)
+guest_expires_at TIMESTAMP
+created_by VARCHAR(100)
+created_date TIMESTAMP
+updated_by VARCHAR(100)
+updated_date TIMESTAMP
+version BIGINT
+is_deleted BOOLEAN
+
+plant_requests
+
+id UUID PK
+user_id UUID FK → users(id)
+image_url TEXT
+image_hash VARCHAR(128)
+latitude NUMERIC(9,6)
+longitude NUMERIC(9,6)
+is_plant BOOLEAN
+confidence NUMERIC(5,4)
+primary_name VARCHAR(255)
+family VARCHAR(255)
+rarity VARCHAR(100)
+habitat TEXT
+ai_provider VARCHAR(100)
+model_name VARCHAR(100)
+processing_time_ms INTEGER
+created_by VARCHAR(100)
+created_date TIMESTAMP
+updated_by VARCHAR(100)
+updated_date TIMESTAMP
+version BIGINT
+is_deleted BOOLEAN
+
+Индексы: user_id, image_hash, created_date
+
+plant_raw_responses
+
+id UUID PK
+request_id UUID FK → plant_requests(id)
+raw_json JSONB
+parsed_json JSONB
+created_by, created_date, updated_by, updated_date, version, is_deleted
+
+ai_usage_stats
+
+id UUID PK
+request_id UUID FK
+provider VARCHAR(100)
+model VARCHAR(100)
+tokens_used INTEGER
+cost_estimate NUMERIC(10,4)
+created_by, created_date, updated_by, updated_date, version, is_deleted
+
+rate_limit_log
+
+id UUID PK
+user_id UUID FK
+endpoint VARCHAR(100)
+request_count INTEGER
+limit_value INTEGER
+blocked BOOLEAN
+created_by, created_date, updated_by, updated_date, version, is_deleted
+
+system_events
+
+id UUID PK
+event_type VARCHAR(100)
+severity VARCHAR(20)
+payload JSONB
+created_date TIMESTAMP
+
+error_logs
+
+id UUID PK
+request_id UUID
+error_code VARCHAR(100)
+message TEXT
+stacktrace TEXT
+created_date TIMESTAMP
+
+Audit Shadow Tables
+
+Для каждой основной таблицы создаётся _log таблица:
+
+log_id UUID PK
+
+entity_id UUID
+
+operation_type VARCHAR(20) — INSERT / UPDATE / DELETE
+
+old_data JSONB
+
+new_data JSONB
+
+changed_by VARCHAR(100)
+
+changed_date TIMESTAMP
+
+Triggers: AFTER INSERT / UPDATE / DELETE
+
+7. API Contract
+Guest
+
+POST /api/v1/session/guest
+Request:
+{
+"deviceId": "ios-uuid",
+"preferredLanguage": "ru"
+}
+Response:
+{
+"accessToken": "jwt",
+"refreshToken": "uuid",
+"expiresIn": 86400,
+"limitPerDay": 3
+}
+
+Auth
+
+POST /api/v1/auth/register
+Request: { "email": "...", "password": "..." }
+Response: { "userId": "uuid", "createdDate": "..." }
+
+POST /api/v1/auth/login
+Request: { "email": "...", "password": "..." }
+Response: { "accessToken": "jwt", "refreshToken": "uuid", "expiresIn": 900 }
+
+POST /api/v1/auth/upgrade
+Request: { "email": "...", "password": "..." }
+Response: обновляет guest → REGISTERED, сохраняет историю
+
+PATCH /api/v1/users/language
+Request: { "preferredLanguage": "en" }
+Response: обновляет preferred_language пользователя
+
+Plant Analysis
+
+POST /api/v1/plants/analyze
+Headers: Authorization: Bearer <token>, X-Request-ID: uuid
+Request: multipart/form-data { image, lat (optional), lng (optional) }
+Response:
+{
+"requestId": "uuid",
+"isPlant": true,
+"confidence": 0.87,
+"primaryResult": {
+"name": "Betula pendula",
+"family": "Betulaceae",
+"rarity": "common",
+"habitat": "Europe",
+"facts": "..."
+},
+"alternatives": [
+{ "name": "Betula pubescens", "confidence": 0.43 }
+],
+"modelInfo": { "provider": "gpt", "model": "gpt-4.1-mini" },
+"processingTimeMs": 1432
+}
+
+GET /api/v1/plants/history?page=0&size=20
+Response: список кратких записей с requestId, primaryName, confidence, createdDate
+
+GET /api/v1/plants/{id}
+Response: полный JSON ответа
+
+DELETE /api/v1/plants/{id}
+Soft delete (is_deleted = true)
+
+Technical / Admin Endpoints (ROLE_ADMIN)
+
+GET /api/v1/system/health
+GET /api/v1/system/health/deep
+POST /api/v1/admin/ai/test
+GET /api/v1/admin/stats/usage
+GET /api/v1/admin/stats/ai-cost
+GET /api/v1/admin/rate-limit/{userId}
+POST /api/v1/admin/rate-limit/reset/{userId}
+GET /api/v1/admin/audit/{entity}/{id}
+GET /api/v1/admin/trace/{requestId}
+GET /api/v1/admin/errors
+GET /api/v1/admin/features
+
+Error Contract
+
+Все ошибки:
+
+{
+"timestamp": "...",
+"requestId": "...",
+"errorCode": "...",
+"message": "...",
+"details": null
+}
+
+8. Rate Limiting
+
+Guest: 3 запросов/день
+Registered: 30+ запросов/день (configurable)
+Проверка: count по created_date, позже можно Redis sliding window
+
+9. AI Layer
+
+AIAdapter interface с OpenAIAdapter, YandexAdapter, GigaChatAdapter
+
+Prompt учитывает preferred_language, JSON-only формат, уверенность, альтернативы, проверку “это растение?”
+
+10. Observability
+
+Structured logging (JSON)
+
+Correlation ID
+
+Audit logs
+
+Business metrics
+
+Cost tracking
+
+11. Scaling Strategy
+
+Stage 1: Modular Monolith
+
+Stage 2: AI сервис как отдельный модуль
+
+Stage 3: Redis для rate limit
+
+Stage 4: Horizontal scaling
+
+Stage 5: gRPC между внутренними сервисами (опционально)

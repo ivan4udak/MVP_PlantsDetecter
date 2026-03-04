@@ -1,0 +1,56 @@
+name: CI Pipeline
+
+# Запускается при push и pull request в main/develop
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    # Поднимаем PostgreSQL для тестов
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: plant_test_db
+          POSTGRES_USER: plant_user
+          POSTGRES_PASSWORD: test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      # Скачиваем код
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Устанавливаем Java 17
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          # Кэшируем Maven зависимости — ускоряет сборку
+          cache: maven
+
+      # Собираем и тестируем
+      - name: Build and Test
+        working-directory: ./backend
+        env:
+          DB_URL: jdbc:postgresql://localhost:5432/plant_test_db
+          DB_USER: plant_user
+          DB_PASSWORD: test_password
+          JWT_SECRET: test-secret-key-for-ci-pipeline-minimum-64-chars-long
+        run: mvn clean verify
+
+      # Проверяем что Docker образ собирается
+      - name: Build Docker image
+        run: docker build -t plant-backend:test ./backend
