@@ -1,0 +1,269 @@
+Plant Identifier Backend Specification v1.0
+
+1. Overview
+
+System type: Enterprise mobile backend
+Architecture: Modular monolith (prepared for service extraction)
+Protocol: REST over HTTPS
+Authentication: JWT (access + refresh)
+Database: PostgreSQL
+Storage: S3-compatible object storage
+AI Integration: Provider abstraction layer
+Audit: Database triggers with shadow tables
+
+2. High-Level Architecture
+
+Mobile Client (iOS) -> REST API -> Service Layer -> Persistence Layer -> PostgreSQL
+-> AI Adapter Layer -> External AI Provider
+-> Object Storage
+
+Security enforced at controller layer via Spring Security.
+Business logic isolated in service layer.
+All entities support soft delete and optimistic locking.
+
+3. User Model
+
+Roles:
+ROLE_GUEST
+ROLE_USER
+ROLE_ADMIN
+ROLE_SYSTEM
+
+Guest flow:
+Guest is created automatically via session endpoint.
+Guest has daily request limit.
+Guest can be upgraded to full user.
+
+User fields:
+id (UUID)
+email
+password_hash
+role
+preferred_language
+is_deleted
+created_date
+updated_date
+version
+
+4. Language Strategy
+
+Preferred language stored in users.preferred_language.
+Language selected during guest creation.
+Language can be updated via API.
+JWT contains language as cached claim.
+Database is source of truth.
+
+Endpoint:
+PATCH /api/v1/users/language
+Request:
+{
+"language": "ru"
+}
+Response: 204 No Content
+
+5. Authentication API
+
+5.1 Create Guest Session
+POST /api/v1/session/guest
+Response:
+{
+"accessToken": "",
+"refreshToken": "",
+"userId": "",
+"role": "ROLE_GUEST",
+"language": "ru"
+}
+
+5.2 Register
+POST /api/v1/auth/register
+Request:
+{
+"email": "",
+"password": "",
+"language": "ru"
+}
+Response: 201 Created
+
+5.3 Login
+POST /api/v1/auth/login
+Request:
+{
+"email": "",
+"password": ""
+}
+Response:
+{
+"accessToken": "",
+"refreshToken": ""
+}
+
+5.4 Refresh Token
+POST /api/v1/auth/refresh
+Request:
+{
+"refreshToken": ""
+}
+Response:
+{
+"accessToken": ""
+}
+
+5.5 Upgrade Guest
+POST /api/v1/auth/upgrade
+Request:
+{
+"email": "",
+"password": ""
+}
+Response: 200 OK
+
+6. Plant Analysis API
+
+6.1 Analyze Plant
+POST /api/v1/plants/analyze
+Headers:
+Authorization: Bearer <token>
+X-Request-ID: <uuid>
+
+Request:
+{
+"imageUrl": "",
+"clientMetadata": {}
+}
+
+Response:
+{
+"requestId": "",
+"plantName": "",
+"latinName": "",
+"confidence": 0.0,
+"description": "",
+"alternatives": [
+{
+"name": "",
+"confidence": 0.0
+}
+]
+}
+
+6.2 Get History
+GET /api/v1/plants/history
+Response:
+[
+{
+"requestId": "",
+"plantName": "",
+"confidence": 0.0,
+"createdDate": ""
+}
+]
+
+6.3 Get By ID
+GET /api/v1/plants/{id}
+Response: Full analysis object
+
+6.4 Delete Request
+DELETE /api/v1/plants/{id}
+Response: 204 No Content
+
+7. Rate Limiting
+
+Guest: 3 requests per day.
+Registered user: configurable.
+
+Implementation:
+Count records in plant_requests per user per day.
+Future extension: Redis sliding window.
+
+8. Core Database Tables
+
+users
+plant_requests
+plant_raw_responses
+ai_usage_stats
+rate_limit_log
+system_events
+error_logs
+
+Common columns:
+created_by
+created_date
+updated_by
+updated_date
+version
+is_deleted
+
+9. Audit Strategy
+
+For each business table:
+Shadow table with suffix _log.
+AFTER INSERT, UPDATE, DELETE trigger.
+Columns:
+operation_type
+old_data JSONB
+new_data JSONB
+changed_by
+changed_date
+
+Immutable audit trail.
+
+10. AI Adapter Layer
+
+Interface: AIAdapter
+Methods:
+analyzeImage(imageUrl, language)
+
+Implementations:
+OpenAIAdapter
+YandexAdapter
+GigaChatAdapter
+
+Prompt rules:
+Strict JSON output.
+Language-aware.
+Return confidence score.
+Detect non-plant input.
+
+11. Technical Endpoints
+
+GET /system/health
+GET /system/health/deep
+
+12. Admin Endpoints (ROLE_ADMIN)
+
+POST /admin/ai/test
+GET /admin/stats/usage
+GET /admin/stats/ai-cost
+GET /admin/rate-limit/{userId}
+POST /admin/rate-limit/reset/{userId}
+GET /admin/audit/{entity}/{id}
+GET /admin/trace/{requestId}
+GET /admin/errors
+GET /admin/features
+
+13. Security
+
+JWT access token lifetime: 15 minutes.
+Refresh token stored securely.
+Role-based authorization.
+Soft delete enforcement.
+Rate limiting.
+Structured logging with correlation ID.
+
+14. Observability
+
+JSON structured logs.
+Request correlation via X-Request-ID.
+Business metrics collection.
+AI cost tracking.
+Error logging.
+
+15. Scaling Strategy
+
+Phase 1: Modular monolith.
+Phase 2: Extract AI service.
+Phase 3: Add Redis.
+Phase 4: Horizontal scaling.
+Phase 5: Optional internal gRPC between services.
+
+End of specification.
