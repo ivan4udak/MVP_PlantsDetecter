@@ -1,0 +1,23 @@
+# Первый запуск — всё поднять
+docker-compose up -d
+
+# Посмотреть логи backend
+docker-compose logs -f backend
+
+# Посмотреть логи postgres
+docker-compose logs -f postgres
+
+# Остановить всё (данные сохраняются в volume)
+docker-compose down
+
+# Остановить И удалить данные (полный сброс!)
+docker-compose down -v
+
+# Пересобрать только backend после изменений кода
+docker-compose up -d --build backend
+
+# Зайти внутрь postgres контейнера
+docker exec -it plant-postgres psql -U plant_user -d plant_identifier_db
+
+# Посмотреть состояние контейнеров
+docker-compose ps

@@ -19,3 +19,25 @@ xcuserdata/
 
 # Optional: keep workspace shared data clean
 *.xcworkspace/xcuserdata/
+
+.env
+*.key
+*.pem
+
+# Java build
+target/
+*.class
+*.jar
+
+# IDE פאיכû
+.idea/
+*.iml
+.vscode/
+
+# OS פאיכû
+.DS_Store
+Thumbs.db
+
+# ֻמדט
+*.log
+logs/
