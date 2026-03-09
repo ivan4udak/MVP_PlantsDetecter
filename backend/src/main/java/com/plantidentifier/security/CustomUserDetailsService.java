@@ -13,58 +13,70 @@ import java.util.UUID;
 
 @Slf4j
 @Service
-// @RequiredArgsConstructor — Lombok генерирует конструктор
-// для всех final полей. Это и есть Dependency Injection!
 @RequiredArgsConstructor
 public class CustomUserDetailsService implements UserDetailsService {
 
     private final UserRepository userRepository;
 
     /**
-     * Spring Security вызывает этот метод когда нужно
-     * загрузить пользователя по username.
+     * Spring Security вызывает этот метод в двух случаях:
      *
-     * В нашем случае username = userId (UUID как строка).
-     * Мы используем UUID а не email потому что:
-     * 1. Гости не имеют email
-     * 2. UUID всегда уникален
-     */
-    // Добавь в CustomUserDetailsService.java новый метод:
-
-    /**
-     * Загрузка по email — используется AuthenticationManager при логине.
-     * Переопределяем поведение: если строка содержит @ — ищем по email,
-     * иначе — по UUID (для JWT фильтра).
+     * 1. JwtAuthFilter — передаёт UUID пользователя
+     *    (достали из JWT токена)
+     *
+     * 2. AuthenticationManager при логине —
+     *    передаёт email (из LoginRequest)
+     *
+     * Определяем что пришло по наличию символа @
      */
     @Override
     @Transactional(readOnly = true)
     public UserDetails loadUserByUsername(String username)
             throws UsernameNotFoundException {
 
-        // Определяем: это email или UUID?
+        log.debug("loadUserByUsername: {}", username);
+
+        // Если содержит @ — это email (логин)
+        // Если не содержит @ — это UUID (JWT фильтр)
         if (username.contains("@")) {
-            // Логин по email
-            return userRepository
-                    .findByEmailAndIsDeletedFalse(username)
-                    .map(CustomUserDetails::new)
-                    .orElseThrow(() -> new UsernameNotFoundException(
-                            "Пользователь не найден: " + username
-                    ));
+            return loadByEmail(username);
         } else {
-            // JWT фильтр передаёт UUID
-            UUID id;
-            try {
-                id = UUID.fromString(username);
-            } catch (IllegalArgumentException e) {
-                throw new UsernameNotFoundException(
-                        "Неверный формат: " + username
-                );
-            }
-            return userRepository
-                    .findByIdAndIsDeletedFalse(id)
-                    .map(CustomUserDetails::new)
-                    .orElseThrow(() -> new UsernameNotFoundException(
-                            "Пользователь не найден: " + username
-                    ));
+            return loadByUuid(username);
         }
     }
+
+    // ─────────────────────────────────────────────
+    // Приватные методы
+    // ─────────────────────────────────────────────
+
+    private UserDetails loadByEmail(String email) {
+        log.debug("Loading user by email: {}", email);
+
+        return userRepository
+                .findByEmailAndIsDeletedFalse(email)
+                .map(CustomUserDetails::new)
+                .orElseThrow(() -> new UsernameNotFoundException(
+                        "Пользователь не найден: " + email
+                ));
+    }
+
+    private UserDetails loadByUuid(String userId) {
+        log.debug("Loading user by UUID: {}", userId);
+
+        UUID id;
+        try {
+            id = UUID.fromString(userId);
+        } catch (IllegalArgumentException e) {
+            throw new UsernameNotFoundException(
+                    "Неверный формат userId: " + userId
+            );
+        }
+
+        return userRepository
+                .findByIdAndIsDeletedFalse(id)
+                .map(CustomUserDetails::new)
+                .orElseThrow(() -> new UsernameNotFoundException(
+                        "Пользователь не найден: " + userId
+                ));
+    }
+}
