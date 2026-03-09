@@ -29,15 +29,18 @@ target/
 *.class
 *.jar
 
-# IDE файлы
+# IDE пїЅпїЅпїЅпїЅпїЅ
 .idea/
 *.iml
 .vscode/
 
-# OS файлы
+# OS пїЅпїЅпїЅпїЅпїЅ
 .DS_Store
 Thumbs.db
 
-# Логи
+# пїЅпїЅпїЅпїЅ
 *.log
 logs/
+
+#maven
+apache-maven-3.9.13/

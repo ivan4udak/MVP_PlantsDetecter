@@ -12,5 +12,5 @@ import java.util.UUID;
 public interface PlantRawResponseRepository
         extends JpaRepository<PlantRawResponse, UUID> {
 
-    Optional<PlantRawResponse> findByRequestId(UUID requestId);
+    Optional<PlantRawResponse> findByRequest_Id(UUID requestId);
 }

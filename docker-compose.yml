@@ -62,13 +62,16 @@ services:
         condition: service_healthy
 
     environment:
-      # Передаём переменные из .env файла
+      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILES_ACTIVE}
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${DB_NAME}
       SPRING_DATASOURCE_USERNAME: ${DB_USER}
       SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD}
       JWT_SECRET: ${JWT_SECRET}
       JWT_EXPIRATION: ${JWT_EXPIRATION}
-      SPRING_PROFILES_ACTIVE: ${SPRING_PROFILE:-dev}
+      JAVA_OPTS: >
+        -Xms256m
+        -Xmx512m
+        -XX:+UseContainerSupport
 
     ports:
       - "8080:8080"
@@ -95,8 +98,9 @@ services:
     restart: unless-stopped
 
     environment:
-      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@plant.dev}
-      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
 
     ports:
       - "5050:80"    # открываем pgAdmin на localhost:5050

@@ -30,17 +30,17 @@ services:
       -c log_min_duration_statement=1000
 
   backend:
-    # В продакшене используем готовый образ из registry
-    # image: ghcr.io/ivan4udak/plant-backend:latest
     environment:
       SPRING_PROFILES_ACTIVE: prod
-      # JVM настройки для контейнера
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/${DB_NAME}
+      SPRING_DATASOURCE_USERNAME: ${DB_USER}
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRATION: ${JWT_EXPIRATION}
       JAVA_OPTS: >
         -Xms256m
         -Xmx512m
         -XX:+UseContainerSupport
-    # В продакшене НЕ пробрасываем порт напрямую
-    # Трафик идёт через nginx reverse proxy
     ports: []
 
   # pgAdmin убираем в продакшене (не нужен)
