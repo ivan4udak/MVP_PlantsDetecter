@@ -90,14 +90,3 @@ CREATE INDEX idx_error_logs_created_date
 -- Системные события по severity (алерты)
 CREATE INDEX idx_system_events_severity
     ON audit.system_events (severity, created_date DESC);
-```
-
----
-
-## ✅ Итог — что готово
-```
-✅ V1__create_users_table.sql   — схемы + uuid + таблица users
-✅ V2__create_plant_tables.sql  — plant_requests + plant_raw_responses
-✅ V3__create_audit_tables.sql  — analytics.* + audit.*
-✅ V4__create_triggers.sql      — аудит триггеры с оптимизацией
-✅ V5__create_indexes.sql       — все индексы с объяснением зачем
