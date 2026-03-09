@@ -1,0 +1,209 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+         https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!--
+        Родитель даёт готовые версии ВСЕХ Spring библиотек.
+        Не нужно вручную следить за совместимостью версий.
+    -->
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.2.3</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>com.plantidentifier</groupId>
+    <artifactId>plant-identifier</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+    <name>plant-identifier</name>
+    <description>Enterprise Plant Identifier Backend</description>
+
+    <properties>
+        <java.version>17</java.version>
+    </properties>
+
+    <dependencies>
+
+        <!-- ════════════════════════════════
+             WEB — HTTP сервер + REST
+             ════════════════════════════════ -->
+        <!--
+            Встроенный Tomcat + @RestController,
+            @GetMapping, @PostMapping и т.д.
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!-- ════════════════════════════════
+             SECURITY — защита endpoint-ов
+             ════════════════════════════════ -->
+        <!--
+            JWT фильтры, @PreAuthorize,
+            BCrypt шифрование паролей
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+
+        <!-- ════════════════════════════════
+             DATABASE — работа с PostgreSQL
+             ════════════════════════════════ -->
+        <!--
+            Spring Data JPA + Hibernate:
+            @Entity, @Repository, JpaRepository
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-jpa</artifactId>
+        </dependency>
+
+        <!--
+            PostgreSQL JDBC драйвер.
+            scope=runtime: нужен при запуске, не при компиляции
+        -->
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!--
+            Flyway: версионирование схемы БД.
+            При старте автоматически запускает V1, V2... миграции
+        -->
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-core</artifactId>
+        </dependency>
+
+        <!--
+            Flyway поддержка PostgreSQL.
+            Нужна отдельно начиная с Flyway 10
+        -->
+        <dependency>
+            <groupId>org.flywaydb</groupId>
+            <artifactId>flyway-database-postgresql</artifactId>
+            <version>10.10.0</version>
+        </dependency>
+
+        <!-- ════════════════════════════════
+             VALIDATION — проверка данных
+             ════════════════════════════════ -->
+        <!--
+            @NotNull, @Email, @Size, @Pattern...
+            Работает вместе с @Valid в контроллерах
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+
+        <!-- ════════════════════════════════
+             JWT — токены аутентификации
+             ════════════════════════════════ -->
+        <!--
+            jjwt: три части обязательны вместе.
+            api — интерфейсы (нужен при компиляции)
+            impl — реализация (только runtime)
+            jackson — JSON парсинг payload (только runtime)
+        -->
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-api</artifactId>
+            <version>0.12.3</version>
+        </dependency>
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-impl</artifactId>
+            <version>0.12.3</version>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-jackson</artifactId>
+            <version>0.12.3</version>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- ════════════════════════════════
+             LOMBOK — убирает boilerplate
+             ════════════════════════════════ -->
+        <!--
+            @Getter, @Setter, @Builder,
+            @RequiredArgsConstructor, @Slf4j...
+            optional=true: не попадает в финальный JAR
+        -->
+        <dependency>
+            <groupId>org.projectlombok</groupId>
+            <artifactId>lombok</artifactId>
+            <optional>true</optional>
+        </dependency>
+
+        <!-- ════════════════════════════════
+             JACKSON — JSON сериализация
+             ════════════════════════════════ -->
+        <!--
+            Уже включён в spring-boot-starter-web,
+            но явно указываем для datatype поддержки Java 8+
+        -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.datatype</groupId>
+            <artifactId>jackson-datatype-jsr310</artifactId>
+        </dependency>
+
+        <!-- ════════════════════════════════
+             TESTING
+             ════════════════════════════════ -->
+        <!--
+            JUnit 5 + Mockito + MockMvc.
+            scope=test: только для тестов
+        -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!--
+            Тестирование защищённых endpoint-ов
+            с mock пользователями (@WithMockUser)
+        -->
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!--
+                Собирает fat-JAR со всеми зависимостями внутри.
+                mvn package → target/plant-identifier-0.0.1-SNAPSHOT.jar
+                mvn spring-boot:run → запускает локально
+            -->
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <configuration>
+                    <excludes>
+                        <!-- Lombok нужен только при компиляции -->
+                        <exclude>
+                            <groupId>org.projectlombok</groupId>
+                            <artifactId>lombok</artifactId>
+                        </exclude>
+                    </excludes>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+</project>

@@ -1,73 +1,63 @@
--- =======================================================
--- V1: Создание таблицы пользователей
--- =======================================================
-
--- Расширение для генерации UUID (встроено в PostgreSQL)
--- UUID — уникальный идентификатор вида: 550e8400-e29b-41d4-a716-446655440000
--- Мы используем UUID вместо обычного числового id по причинам безопасности:
--- числовой id=1,2,3 легко перебрать, UUID — нет
-SET search_path TO app, public;
+-- =====================================================
+-- V1: Расширения, схемы, таблица пользователей
+-- =====================================================
 
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
-CREATE TABLE app.users (
-    -- Первичный ключ: UUID генерируется автоматически
-                       id                  UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+CREATE SCHEMA IF NOT EXISTS app;
+CREATE SCHEMA IF NOT EXISTS analytics;
+CREATE SCHEMA IF NOT EXISTS audit;
 
-    -- Email: уникальный, может быть NULL для guest пользователей
-                       email               VARCHAR(255) UNIQUE,
+CREATE TABLE app.users
+(
+    id                 UUID         NOT NULL DEFAULT uuid_generate_v4(),
 
-    -- Хэш пароля (никогда не храним пароль в открытом виде!)
-                       password_hash       VARCHAR(255),
+    email              VARCHAR(255),
+    password_hash      VARCHAR(255),
 
-    -- Тип пользователя: GUEST или REGISTERED
-                       user_type           VARCHAR(20)  NOT NULL DEFAULT 'GUEST',
+    -- user_type: КАК создан аккаунт
+    -- GUEST       = создан через POST /session/guest
+    -- REGISTERED  = создан через POST /auth/register
+    user_type          VARCHAR(20)  NOT NULL DEFAULT 'GUEST',
 
-    -- Статус аккаунта: ACTIVE, BLOCKED, DELETED
-                       status              VARCHAR(50)  NOT NULL DEFAULT 'ACTIVE',
+    -- role: КАКИЕ ПРАВА у пользователя
+    -- ROLE_GUEST   = только 3 запроса/день, нет истории
+    -- ROLE_USER    = полный доступ к своим данным
+    -- ROLE_ADMIN   = доступ к /admin/** endpoints
+    -- ROLE_SYSTEM  = для внутренних сервисов и интеграций
+    role               VARCHAR(20)  NOT NULL DEFAULT 'ROLE_GUEST',
 
-    -- ID устройства (для guest сессий)
-                       device_id           VARCHAR(255),
+    status             VARCHAR(50)  NOT NULL DEFAULT 'ACTIVE',
 
-    -- Предпочитаемый язык: 'ru', 'en', 'de' и т.д.
-                       preferred_language  VARCHAR(10)  NOT NULL DEFAULT 'en',
+    device_id          VARCHAR(255),
+    preferred_language VARCHAR(10)  NOT NULL DEFAULT 'en',
+    guest_expires_at   TIMESTAMP,
 
-    -- Когда истекает guest сессия (NULL для обычных пользователей)
-                       guest_expires_at    TIMESTAMP,
+    created_by         VARCHAR(100),
+    created_date       TIMESTAMP    NOT NULL DEFAULT NOW(),
+    updated_by         VARCHAR(100),
+    updated_date       TIMESTAMP    NOT NULL DEFAULT NOW(),
+    version            BIGINT       NOT NULL DEFAULT 0,
+    is_deleted         BOOLEAN      NOT NULL DEFAULT FALSE,
 
-    -- ↓↓↓ Аудит поля — кто и когда создал/изменил запись ↓↓↓
+    CONSTRAINT users_pkey              PRIMARY KEY (id),
+    CONSTRAINT users_email_unique      UNIQUE (email),
 
-    -- Кто создал запись (system, или email пользователя)
-                       created_by          VARCHAR(100),
+    -- user_type: только два значения — тип аккаунта
+    CONSTRAINT users_user_type_check
+        CHECK (user_type IN ('GUEST', 'REGISTERED')),
 
-    -- Когда создана запись
-                       created_date        TIMESTAMP    NOT NULL DEFAULT NOW(),
+    -- role: четыре значения — права доступа
+    CONSTRAINT users_role_check
+        CHECK (role IN ('ROLE_GUEST', 'ROLE_USER', 'ROLE_ADMIN', 'ROLE_SYSTEM')),
 
-    -- Кто последний изменил
-                       updated_by          VARCHAR(100),
-
-    -- Когда последний раз изменена
-                       updated_date        TIMESTAMP    NOT NULL DEFAULT NOW(),
-
-    -- Оптимистичная блокировка: если два запроса пытаются изменить
-    -- одну запись одновременно — тот кто пришёл вторым получит ошибку
-    -- Spring автоматически проверяет эту версию через @Version
-                       version             BIGINT       NOT NULL DEFAULT 0,
-
-    -- Мягкое удаление: вместо DELETE мы ставим is_deleted = true
-    -- Данные не теряются, историю можно восстановить
-                       is_deleted          BOOLEAN      NOT NULL DEFAULT FALSE
+    CONSTRAINT users_status_check
+        CHECK (status IN ('ACTIVE', 'BLOCKED', 'DELETED'))
 );
 
--- Индексы для быстрого поиска
--- Без индекса PostgreSQL читает ВСЮ таблицу при поиске по email
--- С индексом — поиск мгновенный (как оглавление в книге)
-CREATE INDEX idx_users_email     ON users(email)      WHERE is_deleted = FALSE;
-CREATE INDEX idx_users_user_type ON users(user_type)  WHERE is_deleted = FALSE;
-CREATE INDEX idx_users_device_id ON users(device_id)  WHERE is_deleted = FALSE;
-
--- Комментарии к таблице (хорошая практика)
-COMMENT ON TABLE  users                    IS 'Пользователи системы (гости и зарегистрированные)';
-COMMENT ON COLUMN users.version            IS 'Версия для оптимистичной блокировки';
-COMMENT ON COLUMN users.is_deleted         IS 'Мягкое удаление — запись не удаляется физически';
-COMMENT ON COLUMN users.guest_expires_at   IS 'Время истечения guest сессии';
+-- Комментарии
+COMMENT ON TABLE  app.users            IS 'Пользователи системы';
+COMMENT ON COLUMN app.users.user_type  IS 'Тип аккаунта: GUEST | REGISTERED';
+COMMENT ON COLUMN app.users.role       IS 'Права доступа: ROLE_GUEST | ROLE_USER | ROLE_ADMIN | ROLE_SYSTEM';
+COMMENT ON COLUMN app.users.version    IS 'JPA @Version: оптимистичная блокировка';
+COMMENT ON COLUMN app.users.is_deleted IS 'Soft delete: true = скрыт, физически не удалён';

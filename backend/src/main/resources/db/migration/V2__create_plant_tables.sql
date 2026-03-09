@@ -1,121 +1,110 @@
--- =======================================================
--- V2: Таблицы для запросов анализа растений
--- =======================================================
+-- =====================================================
+-- V2: Таблицы для анализа растений
+-- =====================================================
 
+-- ─────────────────────────────────────────────────────
 -- Главная таблица: каждый запрос на определение растения
-CREATE TABLE app.plant_requests (
-                                id                  UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+-- ─────────────────────────────────────────────────────
+CREATE TABLE app.plant_requests
+(
+    id                 UUID          NOT NULL DEFAULT uuid_generate_v4(),
 
-    -- Связь с пользователем
-    -- REFERENCES = внешний ключ: значение ДОЛЖНО существовать в users.id
-                                user_id             UUID NOT NULL REFERENCES users(id),
+    -- Внешний ключ → app.users
+    -- ON DELETE RESTRICT: нельзя удалить юзера у которого есть запросы
+    user_id            UUID          NOT NULL,
 
     -- URL изображения в S3 хранилище
-                                image_url           TEXT,
+    image_url          TEXT,
 
-    -- Хэш изображения (для дедупликации: если то же фото — не тратим AI токены)
-                                image_hash          VARCHAR(128),
+    -- SHA-256 хэш изображения
+    -- Зачем: если клиент шлёт то же фото — не тратим AI токены
+    image_hash         VARCHAR(128),
 
     -- Геолокация (опционально, для будущих фич)
-                                latitude            NUMERIC(9,6),
-                                longitude           NUMERIC(9,6),
+    latitude           NUMERIC(9, 6),
+    longitude          NUMERIC(9, 6),
 
-    -- Результат анализа
-                                is_plant            BOOLEAN,          -- Это вообще растение?
-                                confidence          NUMERIC(5,4),     -- Уверенность: 0.0000 - 1.0000
-                                primary_name        VARCHAR(255),     -- Название растения
-                                family              VARCHAR(255),     -- Семейство растения
-                                rarity              VARCHAR(100),     -- Редкость: common/rare/endangered
-                                habitat             TEXT,             -- Среда обитания
+    -- ── Результат AI анализа ────────────────────────
 
-    -- Информация об AI провайдере
-                                ai_provider         VARCHAR(100),     -- 'openai', 'yandex', 'gigachat'
-                                model_name          VARCHAR(100),     -- 'gpt-4.1-mini', и т.д.
-                                processing_time_ms  INTEGER,          -- Сколько миллисекунд занял анализ
+    -- false если на фото не растение (мусор, животное...)
+    is_plant           BOOLEAN,
 
-    -- Стандартные аудит поля
-                                created_by          VARCHAR(100),
-                                created_date        TIMESTAMP NOT NULL DEFAULT NOW(),
-                                updated_by          VARCHAR(100),
-                                updated_date        TIMESTAMP NOT NULL DEFAULT NOW(),
-                                version             BIGINT    NOT NULL DEFAULT 0,
-                                is_deleted          BOOLEAN   NOT NULL DEFAULT FALSE
+    -- Уверенность: 0.0000 — 1.0000
+    confidence         NUMERIC(5, 4),
+
+    -- Основное название растения
+    primary_name       VARCHAR(255),
+
+    -- Семейство: Betulaceae, Rosaceae...
+    family             VARCHAR(255),
+
+    -- Редкость: common / rare / endangered / extinct
+    rarity             VARCHAR(100),
+
+    -- Среда обитания: длинный текст
+    habitat            TEXT,
+
+    -- ── Мета-данные AI провайдера ────────────────────
+    ai_provider        VARCHAR(100),  -- 'openai' | 'yandex' | 'gigachat'
+    model_name         VARCHAR(100),  -- 'gpt-4.1-mini' | ...
+    processing_time_ms INTEGER,       -- сколько мс занял анализ
+
+    -- ── Аудит поля ──────────────────────────────────
+    created_by         VARCHAR(100),
+    created_date       TIMESTAMP     NOT NULL DEFAULT NOW(),
+    updated_by         VARCHAR(100),
+    updated_date       TIMESTAMP     NOT NULL DEFAULT NOW(),
+    version            BIGINT        NOT NULL DEFAULT 0,
+    is_deleted         BOOLEAN       NOT NULL DEFAULT FALSE,
+
+    -- ── Ограничения ─────────────────────────────────
+    CONSTRAINT plant_requests_pkey    PRIMARY KEY (id),
+    CONSTRAINT plant_requests_user_fk FOREIGN KEY (user_id)
+        REFERENCES app.users (id) ON DELETE RESTRICT,
+    CONSTRAINT plant_requests_confidence_check
+        CHECK (confidence IS NULL OR (confidence >= 0 AND confidence <= 1))
 );
 
--- Индексы для часто используемых запросов
-CREATE INDEX idx_plant_requests_user_id      ON plant_requests(user_id)      WHERE is_deleted = FALSE;
-CREATE INDEX idx_plant_requests_image_hash   ON plant_requests(image_hash);
-CREATE INDEX idx_plant_requests_created_date ON plant_requests(created_date)  WHERE is_deleted = FALSE;
+COMMENT ON TABLE  app.plant_requests                    IS 'Запросы на определение растений';
+COMMENT ON COLUMN app.plant_requests.image_hash         IS 'SHA-256 для дедупликации: одно фото = один AI запрос';
+COMMENT ON COLUMN app.plant_requests.confidence         IS 'Уверенность AI: 0.0-1.0';
+COMMENT ON COLUMN app.plant_requests.is_plant           IS 'false если на фото не растение';
+COMMENT ON COLUMN app.plant_requests.processing_time_ms IS 'Время ответа AI в миллисекундах';
 
--- Сырой ответ от AI (храним для отладки и аудита)
-CREATE TABLE app.plant_raw_responses (
-                                     id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+-- ─────────────────────────────────────────────────────
+-- Сырой ответ от AI — храним для отладки и аудита
+-- Позволяет перепарсить если изменим логику парсинга
+-- ─────────────────────────────────────────────────────
+CREATE TABLE app.plant_raw_responses
+(
+    id           UUID      NOT NULL DEFAULT uuid_generate_v4(),
 
-    -- Связь с запросом
-                                     request_id  UUID NOT NULL REFERENCES plant_requests(id),
+    -- Один запрос → один сырой ответ (1:1)
+    request_id   UUID      NOT NULL,
 
-    -- JSONB — бинарный JSON в PostgreSQL (быстрый поиск внутри JSON)
-                                     raw_json    JSONB,      -- Оригинальный ответ AI как есть
-                                     parsed_json JSONB,      -- Распарсенный структурированный ответ
+    -- JSONB: бинарный JSON в PostgreSQL
+    -- Быстрее text для поиска внутри JSON (GIN индексы)
+    -- raw_json: оригинальный ответ AI как есть (для отладки)
+    raw_json     JSONB,
 
-                                     created_by   VARCHAR(100),
-                                     created_date TIMESTAMP NOT NULL DEFAULT NOW(),
-                                     updated_by   VARCHAR(100),
-                                     updated_date TIMESTAMP NOT NULL DEFAULT NOW(),
-                                     version      BIGINT    NOT NULL DEFAULT 0,
-                                     is_deleted   BOOLEAN   NOT NULL DEFAULT FALSE
+    -- parsed_json: наш структурированный результат
+    parsed_json  JSONB,
+
+    created_by   VARCHAR(100),
+    created_date TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_by   VARCHAR(100),
+    updated_date TIMESTAMP NOT NULL DEFAULT NOW(),
+    version      BIGINT    NOT NULL DEFAULT 0,
+    is_deleted   BOOLEAN   NOT NULL DEFAULT FALSE,
+
+    CONSTRAINT plant_raw_responses_pkey       PRIMARY KEY (id),
+    CONSTRAINT plant_raw_responses_request_fk FOREIGN KEY (request_id)
+        REFERENCES app.plant_requests (id) ON DELETE CASCADE,
+    -- CASCADE: удаляем сырой ответ если удаляем запрос
+    CONSTRAINT plant_raw_responses_unique_request UNIQUE (request_id)
+    -- UNIQUE: гарантируем что у одного запроса ровно один raw response
 );
 
--- Статистика использования AI (для подсчёта расходов)
-CREATE TABLE analytics.ai_usage_stats (
-                                id             UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-                                request_id     UUID NOT NULL REFERENCES plant_requests(id),
-                                provider       VARCHAR(100),
-                                model          VARCHAR(100),
-                                tokens_used    INTEGER,
-                                cost_estimate  NUMERIC(10,4),   -- Примерная стоимость в USD
-
-                                created_by   VARCHAR(100),
-                                created_date TIMESTAMP NOT NULL DEFAULT NOW(),
-                                updated_by   VARCHAR(100),
-                                updated_date TIMESTAMP NOT NULL DEFAULT NOW(),
-                                version      BIGINT    NOT NULL DEFAULT 0,
-                                is_deleted   BOOLEAN   NOT NULL DEFAULT FALSE
-);
-
--- Лог rate limiting (кто и когда превысил лимиты)
-CREATE TABLE analytics.rate_limit_log (
-                                id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-                                user_id       UUID NOT NULL REFERENCES users(id),
-                                endpoint      VARCHAR(100),
-                                request_count INTEGER,
-                                limit_value   INTEGER,
-                                blocked       BOOLEAN NOT NULL DEFAULT FALSE,
-
-                                created_by   VARCHAR(100),
-                                created_date TIMESTAMP NOT NULL DEFAULT NOW(),
-                                updated_by   VARCHAR(100),
-                                updated_date TIMESTAMP NOT NULL DEFAULT NOW(),
-                                version      BIGINT    NOT NULL DEFAULT 0,
-                                is_deleted   BOOLEAN   NOT NULL DEFAULT FALSE
-);
-
--- Системные события (старт, остановка, ошибки системы)
-CREATE TABLE audit.system_events (
-                               id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-                               event_type  VARCHAR(100),
-                               severity    VARCHAR(20),    -- INFO, WARN, ERROR, CRITICAL
-                               payload     JSONB,
-                               created_date TIMESTAMP NOT NULL DEFAULT NOW()
-    -- Намеренно без аудит полей — это сами и есть аудит
-);
-
--- Лог ошибок
-CREATE TABLE audit.error_logs (
-                            id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-                            request_id  UUID,           -- Может быть NULL если ошибка до парсинга запроса
-                            error_code  VARCHAR(100),
-                            message     TEXT,
-                            stacktrace  TEXT,
-                            created_date TIMESTAMP NOT NULL DEFAULT NOW()
-);
+COMMENT ON TABLE  app.plant_raw_responses             IS 'Сырые ответы AI — для отладки и повторного парсинга';
+COMMENT ON COLUMN app.plant_raw_responses.raw_json    IS 'Оригинальный JSON от AI без изменений';
+COMMENT ON COLUMN app.plant_raw_responses.parsed_json IS 'Структурированный результат после парсинга';
